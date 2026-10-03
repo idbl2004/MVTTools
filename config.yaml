@@ -7,8 +7,8 @@
 generalSettings:
   # Directories
   directories:
-    dataPath: "/mnt/data/dp961/data" # data path
-    processedDataPath: "/mnt/data/dp961/processed" # processed data path
+    dataPath: "/Users/rodrigogarcialeon/FYP/data" # data path
+    processedDataPath: "/Users/rodrigogarcialeon/FYP/processed" # processed data path
     sharedObjectsPath: "./cFiles" # shared objects path
     logPath: "./logs" # log path
 
