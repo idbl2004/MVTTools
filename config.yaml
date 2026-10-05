@@ -7,8 +7,8 @@
 generalSettings:
   # Directories
   directories:
-    dataPath: "/Users/rodrigogarcialeon/FYP/data" # data path
-    processedDataPath: "/Users/rodrigogarcialeon/FYP/processed" # processed data path
+    dataPath: "/home/ignaciobl2004/MVTTools/data" # data path
+    processedDataPath: "/home/ignaciobl2004/MVTTools/processed" # processed data path
     sharedObjectsPath: "./cFiles" # shared objects path
     logPath: "./logs" # log path
 
