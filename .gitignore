@@ -17,3 +17,5 @@ to do.txt
 # Local setup backups
 MVTEnvHEA-before-project-requirements.yml
 config.yaml.backup-before-path-change
+
+swiftDataTools/testSwiftXSPEC310.py.backup-before-portable-paths
