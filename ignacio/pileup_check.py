@@ -12,8 +12,9 @@ energy channels, since every recorded photon costs the detector time:
    of each bin from the recorded events; live fraction = live time / width.
 2. Data gaps. If the TTE data stream overflows, whole stretches of events
    are dropped. At a rate r, a gap of length dt between consecutive events
-   has probability exp(-r*dt), so any gap with r*dt > 20 (chance < 1e-8)
-   is not Poisson noise but lost data.
+   has probability exp(-r*dt), so any gap with r*dt > 20 (chance ~2e-9)
+   is not Poisson noise but lost data. The search is repeated at 10 and
+   30 to show the result doesn't hinge on that choice.
 
 Pile-up proper (two photons arriving within ~1 us and being recorded as
 one photon with the summed energy) also distorts the spectrum; that can't
@@ -38,6 +39,7 @@ BIN_WIDTH = 0.016                # s
 TIME_RANGE = (-5.0, 50.0)        # s
 BAD_TIME_INTERVAL = (3.0, 7.0)   # s, as flagged in the paper
 GAP_SIGNIFICANCE = 20.0          # flag gaps with rate * gap > this
+ROBUSTNESS_LEVELS = [10.0, 20.0, 30.0]   # rerun the gap search at these
 
 edges = aligned_bin_edges(TIME_RANGE, BIN_WIDTH)
 centres = 0.5 * (edges[:-1] + edges[1:])
@@ -61,6 +63,18 @@ for det in DETECTORS:
     gap_bins = np.clip(np.digitize(times[:-1], edges) - 1, 0, len(rate) - 1)
     # Take the busier of the bin before and after: the gap itself drags its own bin down
     local_rate = np.maximum(rate[gap_bins], rate[np.clip(gap_bins + 1, 0, len(rate) - 1)])
+    # Robustness: how much do the results depend on the threshold?
+    # A gap with rate*gap > 10 has chance e^-10 ~ 5e-5 per gap; with ~1e6
+    # events in the burst a few such gaps are expected by chance at 10, none at 20.
+    for level in ROBUSTNESS_LEVELS:
+        flagged = local_rate * gap_lengths > level
+        print(f"    threshold {level:4.0f}: {flagged.sum():3d} gaps, "
+              f"total {1e3 * gap_lengths[flagged].sum():5.1f} ms, "
+              f"expected by chance {len(gap_lengths) * np.exp(-level):.2g}")
+    # Shortest gap the search can see at the typical rate inside 3-7 s
+    typical_rate = np.median(rate[in_bti])
+    print(f"    shortest detectable gap at {typical_rate:.0f} counts/s: "
+          f"{1e3 * GAP_SIGNIFICANCE / typical_rate:.2f} ms")
     lost = local_rate * gap_lengths > GAP_SIGNIFICANCE
     gap_starts, gap_sizes = times[:-1][lost], gap_lengths[lost]
     lost_counts = np.sum(local_rate[lost] * gap_sizes)

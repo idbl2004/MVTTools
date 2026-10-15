@@ -14,9 +14,16 @@ background_fit_check.png
     top and the fit windows shaded: shows whether the polynomial is a fair
     description of the quiet periods, and how it interpolates under the burst.
 lightcurves_bkg_subtracted.png
-    Net counts per 16 ms bin, same bands and detectors as Fig. 1.
-    Error on each bin = sqrt(N + sigma_bkg^2): Poisson noise on the raw
-    counts plus the uncertainty of the background model.
+    Net counts per 16 ms bin, same bands and detectors as Fig. 1, corrected
+    for dead time (thin dark line: without the correction).
+
+Dead-time correction: each detector's raw counts are divided by its live
+fraction in that bin (pileup_check.py: down to ~0.77 in b1, ~0.92 in na
+during the precursor). The fitted background is already a rate per unit
+live time, so after the correction both are on the same footing.
+Error on each bin = sqrt(N / f^2 + sigma_bkg^2), with N raw counts and f
+the live fraction: Poisson noise scaled by the correction, plus the
+uncertainty of the background model.
 """
 import numpy as np
 import matplotlib
@@ -24,7 +31,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from lightcurve_tools import (aligned_bin_edges, band_counts, fit_background,
-                              background_in_band)
+                              background_in_band, live_fraction)
 
 # --- Settings (same as the Fig. 1 reproduction) ---------------------------
 DATA_DIR = "data/fermiGBM/GRB230307A/current"
@@ -42,6 +49,7 @@ COARSE_BIN = 1.024      # s, for the fit check plot
 PLOT_RANGE = (-5.0, 50.0)
 FULL_RANGE = (-100.0, 280.0)
 BAD_TIME_INTERVAL = (3.0, 7.0)
+PRECURSOR = (-0.064, 0.320)   # s, Dichiara's precursor spectral interval
 
 fine_edges = aligned_bin_edges(PLOT_RANGE, FINE_BIN)
 coarse_edges = aligned_bin_edges(FULL_RANGE, COARSE_BIN)
@@ -57,21 +65,29 @@ for det in sorted({d for band in BANDS.values() for d in band["detectors"]}):
 results = {}
 for name, band in BANDS.items():
     raw = np.zeros(len(fine_t))
+    corrected = np.zeros(len(fine_t))
+    corrected_var = np.zeros(len(fine_t))
     bkg = np.zeros(len(fine_t))
     bkg_var = np.zeros(len(fine_t))
     raw_coarse = np.zeros(len(coarse_t))
     bkg_coarse = np.zeros(len(coarse_t))
     for det in band["detectors"]:
-        raw += band_counts(DATA_DIR, BURST_ID, det, band["range"], fine_edges)
+        det_raw = band_counts(DATA_DIR, BURST_ID, det, band["range"], fine_edges)
+        live = live_fraction(DATA_DIR, BURST_ID, det, fine_edges)
+        raw += det_raw
+        corrected += det_raw / live
+        corrected_var += det_raw / live**2
         b, b_err = background_in_band(fitters[det], band["range"], fine_edges)
         bkg += b
         bkg_var += b_err**2   # detectors are fitted independently
         raw_coarse += band_counts(DATA_DIR, BURST_ID, det, band["range"], coarse_edges)
         bkg_coarse += background_in_band(fitters[det], band["range"], coarse_edges)[0]
 
-    net = raw - bkg
-    net_err = np.sqrt(raw + bkg_var)
+    net = corrected - bkg
+    net_err = np.sqrt(corrected_var + bkg_var)
+    net_uncorrected = raw - bkg
     results[name] = dict(raw=raw, bkg=bkg, net=net, net_err=net_err,
+                         net_uncorrected=net_uncorrected,
                          raw_coarse=raw_coarse, bkg_coarse=bkg_coarse)
 
     at_trigger = np.argmin(np.abs(fine_t))
@@ -79,6 +95,11 @@ for name, band in BANDS.items():
     print(f"{name}: background at T0 = {bkg[at_trigger]:.1f} "
           f"+/- {np.sqrt(bkg_var[at_trigger]):.1f} cts/bin; "
           f"net counts before -1 s average {net[pre].mean():.1f} (should be ~0)")
+    precursor = (fine_t > PRECURSOR[0]) & (fine_t < PRECURSOR[1])
+    gain = net[precursor].sum() / net_uncorrected[precursor].sum() - 1
+    print(f"{name}: precursor net counts {net[precursor].sum():.0f} "
+          f"+/- {np.sqrt(np.sum(net_err[precursor]**2)):.0f} "
+          f"(dead-time correction adds {100 * gain:.1f}%)")
 
 # --- Check of the background fit -------------------------------------------
 fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
@@ -106,7 +127,9 @@ for ax, (name, band) in zip(axes, BANDS.items()):
     r = results[name]
     ax.errorbar(fine_t, r["net"], yerr=r["net_err"], fmt="none",
                 ecolor=band["colour"], elinewidth=0.4, alpha=0.4)
-    ax.plot(fine_t, r["net"], color=band["colour"], lw=0.7, label=name)
+    ax.plot(fine_t, r["net"], color=band["colour"], lw=0.7, label=f"{name}, dead-time corrected")
+    ax.plot(fine_t, r["net_uncorrected"], color="black", lw=0.3, alpha=0.6,
+            label="without correction")
     ax.axhline(0, color="black", lw=0.6)
     ax.axvspan(*BAD_TIME_INTERVAL, color="grey", alpha=0.15, label="BTI (pile-up)")
     ax.set_ylabel("Net counts [cts/bin]")

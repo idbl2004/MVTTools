@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 from gdt.missions.fermi.gbm.tte import GbmTte
-from gdt.core.binning.unbinned import bin_by_time
+from gdt.core.binning.unbinned import bin_by_time, bin_by_edges
 from gdt.core.background.fitter import BackgroundFitter
 from gdt.core.background.binned import Polynomial
 
@@ -32,6 +32,19 @@ def band_counts(data_dir, burst_id, det, energy_band, bin_edges):
     tte.close()
     counts, _ = np.histogram(arrival_times, bins=bin_edges)
     return counts
+
+
+def live_fraction(data_dir, burst_id, det, bin_edges):
+    """Fraction of each bin the detector was able to record (1 = no dead time).
+
+    Every recorded event, at any energy, makes the detector blind for
+    2.6 us (10 us in the overflow channel); GDT takes this from the file
+    and returns the live time of each bin as the PHAII exposure.
+    """
+    tte = GbmTte.open(tte_path(data_dir, burst_id, det))
+    phaii = tte.to_phaii(bin_by_edges, bin_edges)
+    tte.close()
+    return np.asarray(phaii.data.exposure) / np.diff(bin_edges)
 
 
 def fit_background(data_dir, burst_id, det, windows, order=3, fit_bin_width=1.024):
